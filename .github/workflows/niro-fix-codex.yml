@@ -1,0 +1,68 @@
+name: Niro Fix (codex)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  statuses: write
+
+concurrency:
+  group: niro-fix-codex-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    name: Pentest and open fix PRs
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          # Niro pushes and opens PRs with a fresh GitHub App token, so the
+          # checkout must not leave its own credential behind for git to use.
+          persist-credentials: false
+
+      - name: Install Niro
+        shell: bash
+        run: curl -fsSL https://raw.githubusercontent.com/apxlabs-ai/niro/main/install.sh | sh
+
+      # Codex/Copilot setup and other CI settings:
+      # https://github.com/apxlabs-ai/niro/blob/main/docs/ci-environment.md
+      - name: Run Niro
+        shell: bash
+        env:
+          CODEX_AUTH_JSON_B64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
+          NIRO_APP_CLIENT_ID: ${{ secrets.NIRO_APP_CLIENT_ID }}
+          NIRO_APP_PRIVATE_KEY: ${{ secrets.NIRO_APP_PRIVATE_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          COPILOT_PROVIDER_API_KEY: ${{ secrets.COPILOT_PROVIDER_API_KEY }}
+          COPILOT_PROVIDER_BASE_URL: https://openrouter.ai/api/v1
+          COPILOT_PROVIDER_TYPE: openai
+          COPILOT_MODEL: z-ai/glm-5.2
+        run: niro fix --agent=codex --goal="Pentest this application" --config-dir=niro --include-findings=true --upload-debug-logs=true
+
+      - name: Upload Niro knowledge
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: niro-knowledge
+          path: niro-knowledge.tar
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # Uploads only when the run wrote the tar — enabled explicitly above.
+      - name: Upload debug logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: niro-debug-logs-unsafe
+          path: niro-debug-logs.tar
+          if-no-files-found: ignore
+          retention-days: 7
