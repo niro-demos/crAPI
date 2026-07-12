@@ -39,7 +39,9 @@ class MCPAuthMiddleware:
         # Get Authorization header
         auth_header = request.headers.get("Authorization")
         if not auth_header:
-            await self.app(scope, receive, send)
+            logger.warning("Authentication failed: missing Authorization header")
+            response = JSONResponse({"error": "Authorization header required"}, status_code=401)
+            await response(scope, receive, send)
             return
 
         try:
