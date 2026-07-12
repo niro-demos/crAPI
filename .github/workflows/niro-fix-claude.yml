@@ -27,9 +27,27 @@ jobs:
           # checkout must not leave its own credential behind for git to use.
           persist-credentials: false
 
+      - name: Install approved Niro configuration
+        uses: niro-demos/niro-configs/.github/actions/install@8c1cc4a6a127684d1395740a74faa5f9128d3a08
+        with:
+          repository: ${{ github.repository }}
+          niro-dir: niro
+          install-root: ${{ github.workspace }}
+
       - name: Install Niro
         shell: bash
         run: curl -fsSL https://raw.githubusercontent.com/apxlabs-ai/niro/main/install.sh | sh
+
+      - name: Verify Niro config proposal credentials
+        shell: bash
+        env:
+          NIRO_APP_CLIENT_ID: ${{ secrets.NIRO_APP_CLIENT_ID }}
+          NIRO_APP_PRIVATE_KEY: ${{ secrets.NIRO_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$NIRO_APP_CLIENT_ID" ] || [ -z "$NIRO_APP_PRIVATE_KEY" ]; then
+            echo "::error::NIRO_APP_CLIENT_ID and NIRO_APP_PRIVATE_KEY are required"
+            exit 1
+          fi
 
       # Codex/Copilot setup and other CI settings:
       # https://github.com/apxlabs-ai/niro/blob/main/docs/ci-environment.md
@@ -47,6 +65,26 @@ jobs:
           COPILOT_PROVIDER_TYPE: openai
           COPILOT_MODEL: z-ai/glm-5.2
         run: niro fix --agent=claude --goal="Pentest this application" --config-dir=niro --include-findings=true --upload-debug-logs=true
+
+      - name: Create Niro config catalog token
+        id: niro-configs-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.NIRO_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NIRO_APP_PRIVATE_KEY }}
+          owner: niro-demos
+          repositories: niro-configs
+
+      - name: Propose Niro configuration update
+        uses: niro-demos/niro-configs/.github/actions/propose@5e67fd8f39949c992af0abcd6efebb1a685353cf
+        with:
+          catalog-token: ${{ steps.niro-configs-token.outputs.token }}
+          source-token: ${{ github.token }}
+          archive: ${{ github.workspace }}/niro-knowledge.tar
+          repository: ${{ github.repository }}
+          niro-dir: niro
+          source-sha: ${{ github.sha }}
+          source-run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       - name: Upload Niro knowledge
         if: always()
