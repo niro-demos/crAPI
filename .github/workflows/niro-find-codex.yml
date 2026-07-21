@@ -47,6 +47,7 @@ jobs:
       # Codex/Copilot setup and other CI settings:
       # https://github.com/apxlabs-ai/niro/blob/main/docs/ci-environment.md
       - name: Run Niro
+        id: niro
         shell: bash
         env:
           CODEX_AUTH_JSON_B64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
@@ -57,7 +58,21 @@ jobs:
           COPILOT_PROVIDER_BASE_URL: https://openrouter.ai/api/v1
           COPILOT_PROVIDER_TYPE: openai
           COPILOT_MODEL: z-ai/glm-5.2
-        run: niro find --autonomous --agent=codex --goal="Pentest this application" --config-dir=niro --include-findings=true --upload-debug-logs=true
+        run: |
+          report_log="$(mktemp)"
+          set +e
+          niro find \
+            --autonomous \
+            --agent=codex \
+            --goal="Pentest this application" \
+            --config-dir=niro \
+            --include-findings=true \
+            --upload-debug-logs=true 2>&1 | tee "$report_log"
+          niro_status="${PIPESTATUS[0]}"
+          set -e
+          report_path="$(sed -n 's/^niro: report: //p' "$report_log" | tail -n 1)"
+          echo "report_path=$report_path" >> "$GITHUB_OUTPUT"
+          exit "$niro_status"
 
       - name: Create Niro config catalog token
         id: niro-configs-token
@@ -89,11 +104,11 @@ jobs:
           retention-days: 30
 
       - name: Upload Niro penetration-test report
-        if: always()
+        if: always() && steps.niro.outputs.report_path != ''
         uses: actions/upload-artifact@v7
         with:
-          name: niro-pentest-report
-          path: ${{ runner.temp }}/niro-reports/**/penetration-test-report-*.pdf
+          path: ${{ steps.niro.outputs.report_path }}
+          archive: false
           if-no-files-found: ignore
           retention-days: 30
 
